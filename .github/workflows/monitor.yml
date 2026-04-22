@@ -1,0 +1,66 @@
+name: 高雄市消防局監控
+
+on:
+  schedule:
+    # 每 10 分鐘執行一次（UTC 時間）
+    # GitHub Actions 最小間隔是 5 分鐘
+    - cron: '*/10 * * * *'
+  
+  workflow_dispatch:  # 允許手動執行
+  
+  push:  # 每次推送時也執行一次測試
+    branches: [ main, master ]
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: 📥 下載程式碼
+      uses: actions/checkout@v3
+    
+    - name: 🐍 設定 Python 3.11
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+    
+    - name: 📦 安裝 Python 套件
+      run: |
+        pip install --upgrade pip
+        pip install -r requirements.txt
+    
+    - name: 💾 載入已通知案件快取
+      uses: actions/cache@v3
+      with:
+        path: notified_cases.json
+        key: notified-cases-${{ github.run_number }}
+        restore-keys: |
+          notified-cases-
+    
+    - name: 🚀 執行監控程式
+      env:
+        TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        GITHUB_ACTIONS: 'true'
+      run: |
+        echo "開始執行監控..."
+        python fdkc_monitor.py
+        echo "執行完成"
+    
+    - name: 📊 顯示執行日誌
+      if: always()
+      run: |
+        if [ -f fdkc_monitor.log ]; then
+          echo "==================== 執行日誌 ===================="
+          cat fdkc_monitor.log
+          echo "================================================="
+        fi
+    
+    - name: 💾 保存快取檔案（用於下次執行）
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: notified-cases
+        path: notified_cases.json
+        retention-days: 30
