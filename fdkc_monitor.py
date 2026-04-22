@@ -3,6 +3,7 @@
 """
 基隆市消防局案件監控系統
 監控 https://119dts.fdkc.gov.tw/DTS/caselist/html 的新案件並透過 Telegram 通知
+支援本地執行和 GitHub Actions 雲端執行
 """
 
 import os
@@ -86,7 +87,6 @@ class FDKCMonitor:
             cases = []
             
             # 尋找案件表格（根據一般消防局網站結構）
-            # 通常案件會在 table 中，每一列代表一個案件
             tables = soup.find_all('table')
             
             for table in tables:
@@ -100,20 +100,16 @@ class FDKCMonitor:
                         headers = [th.get_text(strip=True) for th in ths]
                         break
                 
-                # 如果沒有找到表頭，嘗試第一列作為表頭
+                # 如果沒有找到表頭，使用預設欄位名稱
                 if not headers and rows:
-                    first_row = rows[0].find_all('td')
-                    if first_row:
-                        # 可能是資料列，使用預設欄位名稱
-                        headers = ['受理時間', '案件類別', '發生地點', '派遣分隊', '執行狀況']
+                    headers = ['受理時間', '案件類別', '發生地點', '派遣分隊', '執行狀況']
                 
                 # 解析資料列
                 for row in rows[1:] if headers else rows:
                     cols = row.find_all('td')
-                    if len(cols) >= 4:  # 至少要有基本資訊
+                    if len(cols) >= 4:
                         case_data = {}
                         
-                        # 嘗試對應欄位
                         for i, col in enumerate(cols):
                             text = col.get_text(strip=True)
                             if i < len(headers):
@@ -121,7 +117,6 @@ class FDKCMonitor:
                             else:
                                 case_data[f'欄位{i+1}'] = text
                         
-                        # 確保有必要欄位
                         if case_data:
                             cases.append(case_data)
             
@@ -137,7 +132,6 @@ class FDKCMonitor:
     
     def generate_case_id(self, case: Dict[str, str]) -> str:
         """產生案件唯一 ID"""
-        # 使用受理時間和地點組成唯一 ID
         time_str = case.get('受理時間', '')
         location = case.get('發生地點', '')
         case_type = case.get('案件類別', '')
@@ -169,7 +163,6 @@ class FDKCMonitor:
         team = case.get('派遣分隊', '未知')
         status = case.get('執行狀況', '未知')
         
-        # 判斷案件類型的圖示
         icon = '🚗' if '車禍' in case_type or '交通' in case_type else '🔥'
         
         message = f"{icon} <b>基隆消防局新案件通報</b>\n\n"
@@ -190,12 +183,33 @@ class FDKCMonitor:
         new_cases = []
         
         for case in cases:
-            # 檢查是否為車禍或火警
             if not self.is_target_case(case):
                 continue
-            def load_config() -> Dict[str, str]:
-    """載入設定檔"""
-    import os
+            
+            case_id = self.generate_case_id(case)
+            
+            if case_id not in self.notified_cases:
+                new_cases.append(case)
+                self.notified_cases.add(case_id)
+        
+        if new_cases:
+            logger.info(f"發現 {len(new_cases)} 筆新案件")
+            for case in new_cases:
+                message = self.format_case_message(case)
+                await self.send_telegram_message(message)
+                await asyncio.sleep(1)
+            
+            self.save_notified_cases()
+        else:
+            logger.info("沒有新案件")
+    
+    def run_check(self):
+        """執行檢查（同步包裝）"""
+        asyncio.run(self.check_and_notify())
+
+
+def load_config() -> Dict[str, str]:
+    """載入設定檔（支援環境變數和本地設定檔）"""
     
     # 優先從環境變數讀取（用於 GitHub Actions）
     token = os.getenv('TELEGRAM_TOKEN')
@@ -210,55 +224,6 @@ class FDKCMonitor:
     
     # 否則從設定檔讀取（本地執行）
     if not os.path.exists(CONFIG_FILE):
-        # 建立範例設定檔
-        example_config = {
-            "telegram_token": "YOUR_TELEGRAM_BOT_TOKEN",
-            "chat_id": "YOUR_TELEGRAM_CHAT_ID"
-        }
-        with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
-            json.dump(example_config, f, ensure_ascii=False, indent=2)
-        logger.error(f"請編輯 {CONFIG_FILE} 填入您的 Telegram 資訊")
-        exit(1)
-    
-    with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
-        config = json.load(f)
-    
-    if config.get('telegram_token') == 'YOUR_TELEGRAM_BOT_TOKEN':
-        logger.error(f"請編輯 {CONFIG_FILE} 填入正確的 Telegram 資訊")
-        exit(1)
-    
-    return config
-    
-            # 產生案件 ID
-            case_id = self.generate_case_id(case)
-            
-            # 檢查是否已通知過
-            if case_id not in self.notified_cases:
-                new_cases.append(case)
-                self.notified_cases.add(case_id)
-        
-        # 發送通知
-        if new_cases:
-            logger.info(f"發現 {len(new_cases)} 筆新案件")
-            for case in new_cases:
-                message = self.format_case_message(case)
-                await self.send_telegram_message(message)
-                await asyncio.sleep(1)  # 避免發送過快
-            
-            # 儲存已通知的案件
-            self.save_notified_cases()
-        else:
-            logger.info("沒有新案件")
-    
-    def run_check(self):
-        """執行檢查（同步包裝）"""
-        asyncio.run(self.check_and_notify())
-
-
-def load_config() -> Dict[str, str]:
-    """載入設定檔"""
-    if not os.path.exists(CONFIG_FILE):
-        # 建立範例設定檔
         example_config = {
             "telegram_token": "YOUR_TELEGRAM_BOT_TOKEN",
             "chat_id": "YOUR_TELEGRAM_CHAT_ID"
@@ -281,7 +246,7 @@ def load_config() -> Dict[str, str]:
 def main():
     """主程式"""
     logger.info("=" * 50)
-    logger.info("高雄市消防局案件監控系統啟動")
+    logger.info("基隆消防局案件監控系統啟動")
     logger.info("=" * 50)
     
     # 載入設定
@@ -293,23 +258,33 @@ def main():
         chat_id=config['chat_id']
     )
     
-    # 首次執行
-    logger.info("執行首次檢查...")
-    monitor.run_check()
+    # 檢查是否在 GitHub Actions 環境中
+    is_github_actions = os.getenv('GITHUB_ACTIONS') == 'true'
     
-    # 設定排程：每 10 分鐘執行一次
-    schedule.every(10).minutes.do(monitor.run_check)
-    
-    logger.info("排程已設定：每 10 分鐘檢查一次")
-    logger.info("程式運行中... (按 Ctrl+C 停止)")
-    
-    # 持續運行
-    try:
-        while True:
-            schedule.run_pending()
-            time.sleep(1)
-    except KeyboardInterrupt:
-        logger.info("\n程式已停止")
+    if is_github_actions:
+        # GitHub Actions 模式：只執行一次
+        logger.info("🌐 GitHub Actions 模式：執行單次檢查")
+        monitor.run_check()
+        logger.info("✅ 檢查完成")
+    else:
+        # 本地模式：持續運行
+        logger.info("💻 本地模式：持續運行")
+        logger.info("執行首次檢查...")
+        monitor.run_check()
+        
+        # 設定排程：每 10 分鐘執行一次
+        schedule.every(10).minutes.do(monitor.run_check)
+        
+        logger.info("排程已設定：每 10 分鐘檢查一次")
+        logger.info("程式運行中... (按 Ctrl+C 停止)")
+        
+        # 持續運行
+        try:
+            while True:
+                schedule.run_pending()
+                time.sleep(1)
+        except KeyboardInterrupt:
+            logger.info("\n程式已停止")
 
 
 if __name__ == "__main__":
