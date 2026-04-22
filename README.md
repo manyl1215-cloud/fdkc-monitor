@@ -1,6 +1,6 @@
-# 基隆市消防局案件監控系統 🚒🚗
+# 高雄市消防局案件監控系統 🚒🚗
 
-自動監控 [基隆市消防局案件系統](https://119dts.fdkc.gov.tw/DTS/caselist/html)，當有新的**車禍**或**火警**案件時，立即透過 Telegram 發送通知。
+自動監控 [高雄市消防局案件系統](https://119dts.fdkc.gov.tw/DTS/caselist/html)，當有新的**車禍**或**火警**案件時，立即透過 Telegram 發送通知。
 
 ## ✨ 功能特色
 
