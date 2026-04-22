@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  fdkc-monitor:
+    build: .
+    container_name: fdkc-monitor
+    restart: unless-stopped
+    volumes:
+      # 掛載設定檔（請先複製 config.example.json 為 config.json 並填入資訊）
+      - ./config.json:/app/config.json:ro
+      # 掛載快取檔案
+      - ./notified_cases.json:/app/notified_cases.json
+      # 掛載日誌檔案
+      - ./fdkc_monitor.log:/app/fdkc_monitor.log
+    environment:
+      - TZ=Asia/Taipei
+    networks:
+      - monitor-network
+
+networks:
+  monitor-network:
+    driver: bridge
