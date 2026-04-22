@@ -193,7 +193,42 @@ class FDKCMonitor:
             # 檢查是否為車禍或火警
             if not self.is_target_case(case):
                 continue
-            
+            def load_config() -> Dict[str, str]:
+    """載入設定檔"""
+    import os
+    
+    # 優先從環境變數讀取（用於 GitHub Actions）
+    token = os.getenv('TELEGRAM_TOKEN')
+    chat_id = os.getenv('TELEGRAM_CHAT_ID')
+    
+    if token and chat_id:
+        logger.info("從環境變數載入設定")
+        return {
+            'telegram_token': token,
+            'chat_id': chat_id
+        }
+    
+    # 否則從設定檔讀取（本地執行）
+    if not os.path.exists(CONFIG_FILE):
+        # 建立範例設定檔
+        example_config = {
+            "telegram_token": "YOUR_TELEGRAM_BOT_TOKEN",
+            "chat_id": "YOUR_TELEGRAM_CHAT_ID"
+        }
+        with open(CONFIG_FILE, 'w', encoding='utf-8') as f:
+            json.dump(example_config, f, ensure_ascii=False, indent=2)
+        logger.error(f"請編輯 {CONFIG_FILE} 填入您的 Telegram 資訊")
+        exit(1)
+    
+    with open(CONFIG_FILE, 'r', encoding='utf-8') as f:
+        config = json.load(f)
+    
+    if config.get('telegram_token') == 'YOUR_TELEGRAM_BOT_TOKEN':
+        logger.error(f"請編輯 {CONFIG_FILE} 填入正確的 Telegram 資訊")
+        exit(1)
+    
+    return config
+    
             # 產生案件 ID
             case_id = self.generate_case_id(case)
             
@@ -246,7 +281,7 @@ def load_config() -> Dict[str, str]:
 def main():
     """主程式"""
     logger.info("=" * 50)
-    logger.info("基隆消防局案件監控系統啟動")
+    logger.info("高雄市消防局案件監控系統啟動")
     logger.info("=" * 50)
     
     # 載入設定
